@@ -27,7 +27,7 @@ jobs:
       
       
       - name: Moving build to artifacts directory
-        run: ./github-actions-script.sh
+        run: sh -x ./github-actions-script.sh
       
 
 
