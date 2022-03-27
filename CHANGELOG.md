@@ -1,3 +1,5 @@
+Version 1.0.4
+- update to IAM roles by me
 VERSION = 1.0.3 
 
 VERSION = 1.0.2   
