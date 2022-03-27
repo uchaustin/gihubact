@@ -24,3 +24,9 @@
           df
           echo 10. what is environment variables available?
           env
+          echo Checking for CHANGELOG.md
+          if [[ ! -f "CHANGELOG.md" ]]
+          then
+              echo "::error::CHANGELOG file not found"
+              exit 1
+          fi
