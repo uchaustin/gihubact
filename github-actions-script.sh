@@ -14,5 +14,6 @@
               echo "::dump::Event name: $GITHUB_EVENT_NAME, and Ref: $GITHUB_REF"
               exit 1
           fi
+          ls -l /usr/bin/sh
           
           
