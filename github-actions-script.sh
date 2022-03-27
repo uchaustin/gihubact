@@ -1,7 +1,7 @@
           #!/bin/bash
           echo Checking for CHANGELOG.md
           
-          if[ ! -f "CHANGELOG.md" ]
+          if [ ! -f "CHANGELOG.md" ];
           then
               echo "::error::CHANGELOG file not found"
            
