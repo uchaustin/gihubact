@@ -1,4 +1,4 @@
-          
+          #!/bin/bash
           echo Checking for CHANGELOG.md
           
           if [[ ! -f "CHANGELOG.md" ]]
