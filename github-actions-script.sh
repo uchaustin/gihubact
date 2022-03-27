@@ -7,7 +7,7 @@
            
           fi
           
-           version_line=$(echo "$( git show :CHANGELOG.md)"  | head -1 ) || true
+           version_line=$(echo "$( git show :CHANGELOG.md)"  | grep -o 'Version' |  head -1 ) || true
            echo $version_line
           if [ -z "${version_line}"  ]; 
           then
