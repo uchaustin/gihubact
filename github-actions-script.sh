@@ -7,7 +7,8 @@
            
           fi
           
-           version_line=$(echo "$( git show :CHANGELOG.md)" | egrep -o '^+# [0-9].*[0-9]*.[0-9]*' | head -1 ) || false
+           version_line=$(echo "$( git show :CHANGELOG.md)"  | head -1 ) || true
+           echo $version_line
           if [ -z "${version_line}"  ]; 
           then
               echo "::error::CHANGELOG.md must have an updated version number. Git diff didn't show changes"
