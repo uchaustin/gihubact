@@ -6,15 +6,15 @@
 # #Checks that there is jira ticket number associated with the commit.
 
 # #Checking if CHANGELOG.md exists
-# #echo "Checking for CHANGELOG.md"
+#echo "Checking for CHANGELOG.md"
 
-# if [ ! -f "CHANGELOG.md" ]
-# then
-#     echo "::error::CHANGELOG file NOT FOUND"
-#     exit 1
-# else
-#     echo "CHANGELOG.md  found"
-# fi
+if [ ! -f "CHANGELOG.md" ]
+then
+    echo "::error::CHANGELOG file NOT FOUND"
+    exit 1
+else
+    echo "CHANGELOG.md  found"
+fi
 
 # ## Checks if there is version number.
 # ## The version here could be any number of digits provided defined in the following order:
