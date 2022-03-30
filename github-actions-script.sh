@@ -20,16 +20,16 @@ fi
 # ## The version here could be any number of digits provided defined in the following order:
 # ## 1.0.0, # 20.5.1, # 1.203.4
 
-# version=$(egrep -o "# [0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}" CHANGELOG.md)
+version=$(egrep -o "# [0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}" CHANGELOG.md)
 
-# if [[ -z "${version}" ]];
-# then
-#     echo -e "\CHANGELOG.md must have a version number.\n"
-#     exit
-#     else
-#     echo -e "\Available Version numbers listed below.\n"
-#     echo "$version"
-# fi
+if [[ -z "${version}" ]];
+then
+    echo -e "\CHANGELOG.md must have a version number.\n"
+    exit
+    else
+    echo -e "\Available Version numbers listed below.\n"
+    echo "$version"
+fi
 
 # ## Check if jira ticket number is documented.
 # ## This will identify the most recent jira ticket.
