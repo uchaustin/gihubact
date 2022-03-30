@@ -1,4 +1,4 @@
-# #!/bin/bash
+#!/bin/bash
 
 # # Checks whether a repository has CHANGELOG.md.
 # # Checks that each commit to the repository is updated in the CHANGELOG.md.
@@ -6,7 +6,7 @@
 # #Checks that there is jira ticket number associated with the commit.
 
 # #Checking if CHANGELOG.md exists
-#echo "Checking for CHANGELOG.md"
+echo "Checking for CHANGELOG.md"
 
 if [ ! -f "CHANGELOG.md" ]
 then
@@ -33,17 +33,17 @@ fi
 
 # ## Check if jira ticket number is documented.
 # ## This will identify the most recent jira ticket.
-#  jira_ticket=$(git log --oneline --no-merges | egrep -o [A-Z]*-[0-9]* CHANGELOG.md)
+ jira_ticket=$(git log --oneline --no-merges | egrep -o [A-Z]*-[0-9]* CHANGELOG.md)
 
-#     if [[ -z "${jira_ticket}"  ]]
-#     then
-#         echo -e "\nCommit-log is missing a Jira ticket number.\n"
-#         exit 1
-#     else
-#         echo -e "\nJira ticket from commit-log is <${jira_ticket}>\n"
-#     fi
+    if [[ -z "${jira_ticket}"  ]]
+    then
+        echo -e "\nCommit-log is missing a Jira ticket number.\n"
+        exit 1
+    else
+        echo -e "\nJira ticket from commit-log is <${jira_ticket}>\n"
+    fi
 
-# #echo -e "\nPull-Request files are excellent.\n"
+echo -e "\nPull-Request files are excellent.\n"
 
 
 # egrep -o "# [0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}"
@@ -58,15 +58,15 @@ echo $NEW_COMMIT
 OLD_COMMIT=$(git diff main..GOVT-20792 -- CHANGELOG.md | egrep -o "[0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}" | head -2 | tail -1)
 echo $OLD_COMMIT
 
-# nv1=$NEW_COMMIT
-# nv2=$OLD_COMMIT
+nv1=$NEW_COMMIT
+nv2=$OLD_COMMIT
 
-# echo ${nv1//./}
-# echo ${nv2//./}
+echo ${nv1//./}
+echo ${nv2//./}
 
 
-# if [[ ${nv1//./} -gt ${nv2//./} ]]; then
-#  echo "version is updated"
-# else
-#  echo "please update version"
-# fi
+if [[ ${nv1//./} -gt ${nv2//./} ]]; then
+ echo "version is updated"
+else
+ echo "please update version"
+fi
