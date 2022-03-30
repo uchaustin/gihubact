@@ -46,7 +46,7 @@ fi
 echo -e "\nPull-Request files are excellent.\n"
 
 
-# egrep -o "# [0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}"
+echo "egrep -o "# [0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}"
 #git diff main..PENG-20792 CHANGELOG | egrep '+version'
 #This checks if the most recent version is updated
 #It works by comparing the newer version to the older one.
