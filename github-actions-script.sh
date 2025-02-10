@@ -1208,3 +1208,122 @@ Parameters:
 
 
 
+**********
+
+import boto3
+import json
+
+def get_all_regions(profile_name):
+    """Fetches all available AWS regions for the given profile."""
+    session = boto3.Session(profile_name=profile_name)
+    ec2_client = session.client("ec2", region_name="us-east-1")
+    return [region["RegionName"] for region in ec2_client.describe_regions()["Regions"]]
+
+def list_unattached_security_groups(ec2_client):
+    """Finds security groups that are not attached to any resource."""
+    sg_response = ec2_client.describe_security_groups()["SecurityGroups"]
+    eni_response = ec2_client.describe_network_interfaces()["NetworkInterfaces"]
+
+    attached_sgs = {sg for eni in eni_response for sg in eni["Groups"]}
+    unattached_sgs = [sg for sg in sg_response if sg["GroupId"] not in attached_sgs]
+
+    return unattached_sgs
+
+def delete_unattached_security_groups(ec2_client, region):
+    """Lists and optionally deletes unattached security groups."""
+    unattached_sgs = list_unattached_security_groups(ec2_client)
+    if not unattached_sgs:
+        print(f"No unattached security groups found in {region}.")
+        return
+
+    print(f"\nUnattached Security Groups in {region}:")
+    for sg in unattached_sgs:
+        print(f"  - {sg['GroupId']} ({sg['GroupName']})")
+
+    confirm = input("\nDelete all unattached security groups? (yes/no): ").strip().lower()
+    if confirm == "yes":
+        for sg in unattached_sgs:
+            try:
+                ec2_client.delete_security_group(GroupId=sg["GroupId"])
+                print(f"Deleted: {sg['GroupId']} ({sg['GroupName']})")
+            except Exception as e:
+                print(f"Failed to delete {sg['GroupId']}: {e}")
+
+def list_and_fix_open_security_groups(ec2_client, region):
+    """Lists security groups open to the internet and optionally restricts them to VPC CIDR."""
+    sg_response = ec2_client.describe_security_groups()["SecurityGroups"]
+    vpcs = {vpc["VpcId"]: vpc["CidrBlock"] for vpc in ec2_client.describe_vpcs()["Vpcs"]}
+
+    open_sgs = []
+    for sg in sg_response:
+        vpc_cidr = vpcs.get(sg["VpcId"], "Unknown VPC CIDR")
+        for rule in sg.get("IpPermissions", []):
+            for ip_range in rule.get("IpRanges", []):
+                if ip_range["CidrIp"] == "0.0.0.0/0":
+                    open_sgs.append((sg, vpc_cidr))
+                    break
+
+    if not open_sgs:
+        print(f"No security groups found open to the internet in {region}.")
+        return
+
+    print(f"\nSecurity Groups Open to the Internet in {region}:")
+    for sg, vpc_cidr in open_sgs:
+        print(f"  - {sg['GroupId']} ({sg['GroupName']}) | VPC CIDR: {vpc_cidr}")
+
+    confirm = input("\nReplace 0.0.0.0/0 with VPC CIDR? (yes/no): ").strip().lower()
+    if confirm == "yes":
+        for sg, vpc_cidr in open_sgs:
+            try:
+                for rule in sg["IpPermissions"]:
+                    for ip_range in rule.get("IpRanges", []):
+                        if ip_range["CidrIp"] == "0.0.0.0/0":
+                            ec2_client.revoke_security_group_ingress(
+                                GroupId=sg["GroupId"],
+                                IpProtocol=rule["IpProtocol"],
+                                FromPort=rule["FromPort"],
+                                ToPort=rule["ToPort"],
+                                CidrIp="0.0.0.0/0"
+                            )
+                            ec2_client.authorize_security_group_ingress(
+                                GroupId=sg["GroupId"],
+                                IpProtocol=rule["IpProtocol"],
+                                FromPort=rule["FromPort"],
+                                ToPort=rule["ToPort"],
+                                CidrIp=vpc_cidr
+                            )
+                print(f"Updated: {sg['GroupId']} ({sg['GroupName']}) - Now restricted to {vpc_cidr}")
+            except Exception as e:
+                print(f"Failed to update {sg['GroupId']}: {e}")
+
+def main():
+    """Main function to run the security group cleanup process."""
+    profile_name = input("Enter AWS profile name: ").strip()
+    regions = get_all_regions(profile_name)
+
+    print("\nAvailable AWS Regions:")
+    for i, region in enumerate(regions):
+        print(f"  {i + 1}. {region}")
+
+    selected_regions = input("\nEnter region numbers (comma-separated) or 'all': ").strip()
+    if selected_regions.lower() == "all":
+        selected_regions = regions
+    else:
+        selected_regions = [regions[int(i) - 1] for i in selected_regions.split(",") if i.isdigit()]
+
+    for region in selected_regions:
+        print(f"\nProcessing region: {region}")
+        session = boto3.Session(profile_name=profile_name, region_name=region)
+        ec2_client = session.client("ec2")
+
+        delete_unattached_security_groups(ec2_client, region)
+        list_and_fix_open_security_groups(ec2_client, region)
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
