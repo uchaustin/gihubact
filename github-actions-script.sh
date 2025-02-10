@@ -2001,3 +2001,83 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+AWS Security Group Management Script
+
+Overview
+
+This script is designed to help AWS administrators identify and manage security groups in their AWS environment. It performs the following tasks:
+
+Lists security groups that are unattached and prompts the user to confirm deletion.
+
+Lists security groups that are open to the internet (0.0.0.0/0) and prompts the user to replace them with the associated VPC CIDR.
+
+Uses AWS SSO authentication to manage expired tokens seamlessly.
+
+Prerequisites
+
+Before running the script, ensure you have the following installed and configured:
+
+Python 3.x: The script requires Python 3.
+
+AWS CLI: The AWS CLI must be installed and configured for AWS SSO authentication.
+
+Boto3: Ensure that the boto3 library is installed by running:
+
+pip install boto3
+
+AWS SSO Configuration: You must be authenticated with AWS SSO for the specified profile.
+
+How to Use
+
+1. Configure AWS SSO
+
+Ensure you have AWS SSO configured and authenticated:
+
+aws sso login --profile AWSGlobalAdmins-598202605839
+
+2. Run the Script
+
+Execute the script using Python:
+
+python security_group_check.py
+
+3. Review and Respond to Prompts
+
+The script will display:
+
+- Unattached Security Groups
+
+If any security groups are not attached to resources, it will list them and prompt:
+
+Do you want to delete these security groups? (yes/no):
+
+If you enter yes, the script will delete them.
+
+- Security Groups Open to the Internet
+
+If any security groups have rules allowing inbound traffic from 0.0.0.0/0, it will list them and prompt:
+
+Do you want to replace 0.0.0.0/0 with VPC CIDR? (yes/no):
+
+If you enter yes, the script will update the security group to use the associated VPC CIDR instead.
+
+Error Handling
+
+If AWS credentials expire, the script will automatically refresh them using AWS SSO.
+
+If there are dependency issues preventing security group deletion, the error will be displayed.
+
+Notes
+
+Ensure you have the necessary IAM permissions to manage security groups.
+
+The script operates in us-west-2 by default. Modify the region_name variable to change the region.
+
+Always review changes before confirming deletions or modifications.
+
+License
+
+This script is provided as-is without warranty. Use at your own risk.
+
