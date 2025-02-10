@@ -1890,3 +1890,114 @@ def main():
 
 if __name__ == "__main__":
     main()
+CCCCCCCCCC
+
+
+
+import boto3
+import subprocess
+from botocore.exceptions import ClientError
+
+def refresh_sso_credentials(profile_name):
+    """
+    Function to re-authenticate via AWS SSO login if credentials are expired.
+    """
+    print(f"Re-authenticating AWS SSO session for profile: {profile_name}")
+    subprocess.run(["aws", "sso", "login", "--profile", profile_name], check=True)
+    print(f"Re-authentication successful for profile: {profile_name}")
+
+def authenticate_client(profile_name, region_name, service):
+    """
+    Authenticate and return a boto3 client for a specific service.
+    Handles expired tokens by refreshing the session.
+    """
+    while True:
+        try:
+            session = boto3.Session(profile_name=profile_name, region_name=region_name)
+            return session.client(service, region_name=region_name)
+        except ClientError as e:
+            if 'ExpiredToken' in str(e):
+                print(f"Token expired for {service}, refreshing credentials...")
+                refresh_sso_credentials(profile_name)
+            else:
+                raise e
+
+def is_security_group_attached(profile_name, region_name, sg_id):
+    """
+    Check if the security group is attached to any resource.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+    interfaces = ec2_client.describe_network_interfaces(
+        Filters=[{'Name': 'group-id', 'Values': [sg_id]}]
+    )['NetworkInterfaces']
+    if interfaces:
+        return True
+
+    instances = ec2_client.describe_instances(
+        Filters=[{'Name': 'instance.group-id', 'Values': [sg_id]}]
+    )['Reservations']
+    if instances:
+        return True
+    return False
+
+def list_unattached_security_groups(profile_name, region_name):
+    """
+    List all unattached security groups and prompt for deletion.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+    security_groups = ec2_client.describe_security_groups()['SecurityGroups']
+    unattached_sgs = [sg for sg in security_groups if not is_security_group_attached(profile_name, region_name, sg['GroupId'])]
+    
+    if unattached_sgs:
+        print("\nUnattached Security Groups:")
+        for sg in unattached_sgs:
+            print(f"{sg['GroupId']} - {sg.get('GroupName', 'Unnamed SG')}")
+        delete = input("Do you want to delete these security groups? (yes/no): ")
+        if delete.lower() == "yes":
+            for sg in unattached_sgs:
+                try:
+                    ec2_client.delete_security_group(GroupId=sg['GroupId'])
+                    print(f"Deleted Security Group: {sg['GroupId']}")
+                except ClientError as e:
+                    print(f"Error deleting Security Group {sg['GroupId']}: {e}")
+
+def list_open_security_groups(profile_name, region_name):
+    """
+    List security groups open to the internet and prompt for replacement with VPC CIDR.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+    security_groups = ec2_client.describe_security_groups()['SecurityGroups']
+    open_sgs = []
+    
+    for sg in security_groups:
+        for permission in sg['IpPermissions']:
+            for ip_range in permission.get('IpRanges', []):
+                if ip_range['CidrIp'] == '0.0.0.0/0':
+                    open_sgs.append(sg)
+                    break
+    
+    if open_sgs:
+        print("\nSecurity Groups Open to the Internet:")
+        for sg in open_sgs:
+            print(f"{sg['GroupId']} - {sg.get('GroupName', 'Unnamed SG')}")
+        replace = input("Do you want to replace 0.0.0.0/0 with VPC CIDR? (yes/no): ")
+        if replace.lower() == "yes":
+            for sg in open_sgs:
+                vpc_id = sg['VpcId']
+                vpc_cidr = ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'][0]['CidrBlock']
+                for permission in sg['IpPermissions']:
+                    for ip_range in permission.get('IpRanges', []):
+                        if ip_range['CidrIp'] == '0.0.0.0/0':
+                            ec2_client.revoke_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[permission])
+                            ip_range['CidrIp'] = vpc_cidr
+                            ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[permission])
+                            print(f"Updated SG {sg['GroupId']} to use VPC CIDR {vpc_cidr}.")
+
+def main():
+    profile_name = "AWSGlobalAdmins-598202605839"
+    region_name = "us-west-2"
+    list_unattached_security_groups(profile_name, region_name)
+    list_open_security_groups(profile_name, region_name)
+
+if __name__ == "__main__":
+    main()
