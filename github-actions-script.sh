@@ -1511,5 +1511,194 @@ if __name__ == "__main__":
     main()
 
 
+shshhshshshshhshshshshsh
+
+import boto3
+import subprocess
+from botocore.exceptions import ClientError
+
+def refresh_sso_credentials(profile_name):
+    """
+    Function to re-authenticate via AWS SSO login if credentials are expired.
+    """
+    print(f"Re-authenticating AWS SSO session for profile: {profile_name}")
+    subprocess.run(["aws", "sso", "login", "--profile", profile_name], check=True)
+    print(f"Re-authentication successful for profile: {profile_name}")
+
+def get_boto3_session(profile_name, region_name):
+    """
+    Get a boto3 session using the provided AWS SSO profile.
+    If the session is expired, re-authenticate.
+    """
+    try:
+        session = boto3.Session(profile_name=profile_name, region_name=region_name)
+        ec2_client = session.client('ec2')
+        ec2_client.describe_instances()
+        print(f"Successfully authenticated with profile: {profile_name} and region: {region_name}")
+        return session
+    except ClientError as e:
+        if 'ExpiredToken' in str(e):
+            refresh_sso_credentials(profile_name)
+            return get_boto3_session(profile_name, region_name)
+        else:
+            raise e
+
+def authenticate_client(profile_name, region_name, service):
+    """
+    Authenticate and return a boto3 client for a specific service.
+    Handles expired tokens by refreshing the session.
+    """
+    while True:
+        try:
+            session = boto3.Session(profile_name=profile_name, region_name=region_name)
+            return session.client(service, region_name=region_name)
+        except ClientError as e:
+            if 'ExpiredToken' in str(e):
+                print(f"Token expired for {service}, refreshing credentials...")
+                refresh_sso_credentials(profile_name)
+            else:
+                raise e
+
+def is_security_group_attached(profile_name, region_name, sg_id):
+    """
+    Check if the security group is attached to any resource.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+
+    # Check network interfaces
+    interfaces = ec2_client.describe_network_interfaces(
+        Filters=[{'Name': 'group-id', 'Values': [sg_id]}]
+    )['NetworkInterfaces']
+
+    if interfaces:
+        return True
+
+    # Check EC2 instances
+    instances = ec2_client.describe_instances(
+        Filters=[{'Name': 'instance.group-id', 'Values': [sg_id]}]
+    )['Reservations']
+
+    if instances:
+        return True
+
+    # Check RDS instances
+    rds_client = authenticate_client(profile_name, region_name, 'rds')
+    try:
+        rds_instances = rds_client.describe_db_instances()['DBInstances']
+        for db_instance in rds_instances:
+            for vpc_sg in db_instance['VpcSecurityGroups']:
+                if vpc_sg['VpcSecurityGroupId'] == sg_id:
+                    return True
+    except ClientError as e:
+        print(f"Error checking RDS instances: {e}")
+
+    # Check Lambda functions
+    lambda_client = authenticate_client(profile_name, region_name, 'lambda')
+    try:
+        functions = lambda_client.list_functions()['Functions']
+        for function in functions:
+            config = lambda_client.get_function(FunctionName=function['FunctionName'])
+            if 'VpcConfig' in config and 'SecurityGroupIds' in config['VpcConfig']:
+                if sg_id in config['VpcConfig']['SecurityGroupIds']:
+                    return True
+    except ClientError as e:
+        print(f"Error checking Lambda functions: {e}")
+
+    # Check Load Balancers (ELBv2)
+    elbv2_client = authenticate_client(profile_name, region_name, 'elbv2')
+    try:
+        load_balancers = elbv2_client.describe_load_balancers()['LoadBalancers']
+        for lb in load_balancers:
+            if sg_id in lb.get('SecurityGroups', []):
+                return True
+    except ClientError as e:
+        print(f"Error checking Load Balancers: {e}")
+
+    return False
+
+def replace_open_ports_with_vpc_cidr(profile_name, region_name, sg_id):
+    """
+    Replace rules with destination 0.0.0.0/0 with the CIDR block of the VPC.
+    Tag the security group with a remediation note.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+
+    # Get the VPC CIDR block for the security group
+    security_group = ec2_client.describe_security_groups(GroupIds=[sg_id])['SecurityGroups'][0]
+    vpc_id = security_group['VpcId']
+    vpc_cidr = ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'][0]['CidrBlock']
+
+    # Check for open rules to 0.0.0.0/0
+    for permission in security_group['IpPermissions']:
+        for ip_range in permission.get('IpRanges', []):
+            if ip_range['CidrIp'] == '0.0.0.0/0':
+                print(f"Found open rule in SG {sg_id}. Replacing 0.0.0.0/0 with {vpc_cidr}")
+
+                # Revoke the open rule
+                ec2_client.revoke_security_group_ingress(
+                    GroupId=sg_id,
+                    IpPermissions=[permission]
+                )
+
+                # Modify the rule to use the VPC CIDR block
+                ip_range['CidrIp'] = vpc_cidr
+                ec2_client.authorize_security_group_ingress(
+                    GroupId=sg_id,
+                    IpPermissions=[permission]
+                )
+                print(f"Updated SG {sg_id} to use VPC CIDR {vpc_cidr}.")
+
+    # Tag the security group with remediation note
+    ec2_client.create_tags(
+        Resources=[sg_id],
+        Tags=[{'Key': 'note', 'Value': 'security-hub-remediated'}]
+    )
+    print(f"Tagged SG {sg_id} with note: security-hub-remediated")
+
+def delete_security_group(profile_name, region_name, sg_id):
+    """
+    Delete a security group after ensuring no dependent resources are attached.
+    """
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+
+    # Check and detach network interfaces
+    interfaces = ec2_client.describe_network_interfaces(
+        Filters=[{'Name': 'group-id', 'Values': [sg_id]}]
+    )['NetworkInterfaces']
+    for interface in interfaces:
+        print(f"Detaching Security Group {sg_id} from Network Interface {interface['NetworkInterfaceId']}")
+        ec2_client.modify_network_interface_attribute(
+            NetworkInterfaceId=interface['NetworkInterfaceId'],
+            Groups=[]
+        )
+
+    # Delete the security group
+    try:
+        ec2_client.delete_security_group(GroupId=sg_id)
+        print(f"Successfully deleted Security Group: {sg_id}")
+    except ClientError as e:
+        print(f"Error deleting Security Group {sg_id}: {e}")
+
+def main():
+    profile_name = "AWSGlobalAdmins-598202605839"
+    region_name = "us-west-2"
+
+    ec2_client = authenticate_client(profile_name, region_name, 'ec2')
+
+    security_groups = ec2_client.describe_security_groups()['SecurityGroups']
+    for sg in security_groups:
+        sg_id = sg['GroupId']
+        sg_name = sg.get('GroupName', 'Unnamed SG')
+        print(f"\nProcessing Security Group: {sg_name} ({sg_id})")
+
+        if is_security_group_attached(profile_name, region_name, sg_id):
+            print(f"Security Group {sg_id} is attached to resources.")
+            replace_open_ports_with_vpc_cidr(profile_name, region_name, sg_id)
+        else:
+            print(f"Security Group {sg_id} is unattached and will be deleted.")
+            delete_security_group(profile_name, region_name, sg_id)
+
+if __name__ == "__main__":
+    main()
 
 
